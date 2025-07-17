@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DTMF Transcoder with Display</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 2rem;
+      background: linear-gradient(to right, #ffe4ec, #fffafc);
+      color: #5c375f;
+    }
+    h1 {
+      text-align: center;
+      font-size: 2.5rem;
+      color: #d63384;
+      margin-bottom: 2rem;
+      text-shadow: 1px 1px 0 #fff;
+    }
+    h2, h3 {
+      color: #ae3d8f;
+    }
+    section {
+      background: #ffffff;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      border-radius: 16px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+      border: 2px solid #f5d1e0;
+    }
+    ul {
+      padding-left: 1.5rem;
+    }
+    li::marker {
+      color: #d63384;
+    }
+    .chapter-title {
+      text-align: center;
+      font-size: 1.8rem;
+      margin-top: 4rem;
+      margin-bottom: 4rem;
+      padding-top: 2rem;
+      padding-bottom: 2rem;
+      color: #b03060;
+      background: linear-gradient(to right, #ffd6e8, #fff0f5);
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(214, 51, 132, 0.1);
+    }
+    .gallery {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+      text-align: center;
+    }
+    .gallery img {
+      max-width: 100%;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      border: 3px solid #f8cce4;
+    }
+    .row {
+      display: flex;
+      gap: 1rem;
+    }
+    .col-6 {
+      flex: 0 0 50%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .bom-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      font-size: 0.95rem;
+      background-color: #fff0f5;
+      border: 2px solid #f5d1e0;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(214, 51, 132, 0.1);
+    }
+
+    .bom-table th,
+    .bom-table td {
+      padding: 0.75rem 1rem;
+     border: 1px solid #f8cce4;
+      text-align: center;
+    }
+
+    .bom-table th {
+      background-color: #ffd6e8;
+      color: #b03060;
+      font-weight: 600;
+    }
+
+    .bom-table tr:nth-child(even) {
+      background-color: #fff5fa;
+    }
+
+  </style>
+</head>
+<body>
+  <h1>💖 Project Theme D10 - DTMF Transcoder with Display - Team 40 💖</h1>
+
+  <div class="chapter-title">🌸 Chapter I - Module Implementation 🌸</div>
+    <section>
+      <pre style="white-space: pre-wrap; font-family: inherit; background: #fff0f5; padding: 1rem; border-radius: 12px; border: 1px solid #f5d1e0;">
+        According to the D10 project topic, the goal is to design and implement a DTMF (Dual Tone Multi Frequency) decoder for GSM networks. Our team chose to expand the project idea into a DTMF transcoder (encoder + decoder). Input and output data from the transcoder are displayed on two SSD1306 OLED screens controlled via I2C. User input is captured through the USER button and a 16-key keypad following the DTMF standard.
+
+        From a technological point of view, for the final solution, we use the perfoboard area provided on the printed circuit board (PCB) supplied by the P2 Department of the Faculty of Electronics, Telecommunications, and Information Technology.
+
+        Regarding OLED screen control, the open-source library we initially used performed full memory refreshes regardless of how many pixels had changed, which was inefficient. We replaced it with a mechanism for partial memory updates. Additionally, our modified library supports multiple OLED displays on different I2C buses and addresses.
+
+        To optimize keypad handling with the STM32 microcontroller, the following components are used to implement a subsystem based on external hardware interrupts:
+        
+        - CD4060B counter;
+        - Two CD4051B multiplexers/demultiplexers.
+
+        During normal operation, the internal oscillator of the counter cycles through all possible 4-bit combinations. These 4 bits serve, two at a time, as selector signals for the multiplexers. All line-column combinations for the 16-key keypad are thus covered. When a key is pressed and the multiplexers select the correct row and column, a continuous circuit from 3.3V to the external interrupt pin of the microcontroller is established.
+
+        When this circuit is completed, an NPN transistor shorts the resistor in the RC network connected to the counter's internal oscillator. The effect is that counting halts as long as the button is pressed, allowing the microcontroller to read the 4-bit output of the counter and determine which key was pressed.
+
+        Our STM32 microcontroller lacks a DAC (Digital-to-Analog Converter), so only digital signals can be generated. To produce DTMF tones, we pass these variable-frequency digital signals through a pair of 6th-order Chebyshev analog filters (3 Sallen-Key stages) with a 0.2 dB ripple in the passband. These filters strongly attenuate all harmonics except the fundamental, yielding clean, sinusoidal tones.
+
+        We aim to connect our solution to a real GSM terminal (an old, basic mobile phone) to interact with it during a GSM call. To answer the call, the microcontroller emulates the behavior of a headset with an answer button. By shorting the microphone terminal of the 3.5mm audio jack to ground, the call answer intent is signaled.
+      </pre>
+    </section>
+
+  <div class="chapter-title">🌼 Chapter II - Hardware Description 🌼</div>
+  <section>
+    <pre style="white-space: pre-wrap; font-family: inherit; background: #fff0f5; padding: 1rem; border-radius: 12px; border: 1px solid #f5d1e0;">
+      The device interfaces with the user through two main components:
+
+      1. <strong>A 16-key DTMF keypad</strong>, used to generate standard tones according to the telephone keypad layout (rows and columns associated with dual-tone frequency pairs);
+      2. <strong>A USER button</strong>, used for auxiliary control operations such as testing or triggering custom behaviors.
+
+      Input and output data are visually displayed on two SSD1306 OLED displays (128x64 pixels), connected via I2C. One screen shows the user’s input (encoded data), and the other shows decoded data (from incoming tones). This parallel visualization aids in debugging, signal verification, and demonstration of the transcoding process.
+
+      Although many microcontroller development boards provide serial output (e.g., UART to USB), we opted for graphical display to offer a self-contained and user-friendly interface. This removes the need for a PC connection during demonstrations or in-field deployment.
+
+      <strong>Hardware Platform and Construction Approach</strong>
+
+      We used a perfoboard area integrated into a custom PCB. The advantage of this approach is:
+
+        It offers a stable mechanical platform with good soldering quality and support for wire routing;
+        It simplifies the integration of multiple I2C buses, analog filters and discrete components without the complications of fully custom PCB design.
+      
+      Using perfoboard also encourages manual circuit understanding, requiring precise layout and signal integrity planning, a valuable skill in hardware development.
+
+      <strong>Display Communication and Optimization</strong>
+
+      Controlling OLED screens efficiently was one of the first engineering challenges we encountered. The default open-source SSD1306 libraries available for microcontrollers were designed for full memory refreshes on every update cycle, regardless of how many pixels had actually changed. This behavior introduced significant latency, especially when using multiple displays, and wasted bus bandwidth.
+
+      To resolve this, we redesigned the rendering logic to track and update only modified regions (partial memory updates). Our system now:
+
+      - Minimizes I2C traffic;
+      - Reduces power consumption (a concern in embedded systems);
+      - Allows parallel management of multiple displays on different I2C buses or addresses.
+
+      This optimization was not trivial and involved modifying the underlying memory buffer structure to support rectangular update regions, a technique borrowed from professional display controller firmware.
+
+      <strong>Keypad Subsystem with Interrupt-Driven Scanning</strong>
+
+      The 16-key keypad posed another interesting challenge: how to efficiently detect key presses with minimal microcontroller overhead. Traditional polling methods are inefficient and fail to scale well with higher-level applications. Instead, we implemented a hardware-interrupt-driven scanning system based on three main components:
+
+      - CD4060B binary counter with internal oscillator;
+      - Two CD4051B multiplexers/demultiplexers, which route signals dynamically based on the counter output.
+
+      The counter generates 4-bit binary codes that act as selector inputs for the CD4051B chips. These selector lines sequentially connect row and column lines of the keypad, effectively scanning all 16 combinations. When a key is pressed, a complete circuit is formed, sending a pulse to the external interrupt pin of the STM32 microcontroller.
+
+      What makes this setup efficient is its low-power nature and independence from the microcontroller’s processing cycles. Additionally, we integrated an NPN transistor that short-circuits the RC network of the counter's oscillator during a keypress, freezing the scan state and allowing precise reading of the current binary output to determine the active key.
+
+      This method ensures accurate and debounced detection without requiring complex software timing or sampling mechanisms.
+
+      <strong>DTMF Tone Generation: Digital Signals and Analog Filters</strong>
+
+      One of the project’s major technical issues was the generation of clean, sinusoidal DTMF tones using a microcontroller that lacks a DAC (Digital-to-Analog Converter). DTMF signals consist of the superposition of two sine waves, each from a predefined frequency set. While generating square waves digitally is trivial, doing so introduces strong harmonic components that distort the signal.
+
+      To address this, we implemented a two-channel digital output system, where each channel toggles GPIO pins at variable frequencies corresponding to DTMF tones. These square waves are then passed through 6th-order analog Chebyshev filters (with a ripple of 0.2 dB in the passband), designed using a cascaded Sallen-Key topology.
+
+      Key design notes:
+
+      - Chebyshev filters were selected for their sharp roll-off, important in suppressing harmonic content;
+      - The Sallen-Key stages were carefully matched for stability and minimal phase distortion;
+      - We performed SPICE simulations to validate the frequency response and expected THD (Total Harmonic Distortion) before physical implementation.
+
+      This hybrid approach, digital signal generation and analog filtering, allows us to create clean, analog-quality DTMF tones using a cost-effective microcontroller platform.
+
+      <strong>GSM Integration and Headset Emulation</strong>
+
+      The ultimate goal is to enable interaction with a standard GSM terminal (an old mobile phone) via audio signals, just as a user might enter numbers during a voice call. This introduces several practical considerations:
+
+      - How to inject audio into the phone? We use the microphone input of a 3.5mm audio jack;
+      - How to simulate answering a call? We discovered that shorting the microphone line to ground mimics the button press of a wired headset.
+
+      Thus, our STM32 microcontroller can effectively:
+
+      - Detect incoming calls (by monitoring line voltage or GSM module behavior);
+      - Simulate a headset pickup via a transistor-based circuit;
+      - Begin tone transmission through the audio channel upon connection.
+
+      This approach keeps the system simple, robust, and low-cost, leveraging standard analog audio signaling without needing specialized GSM modems.
+
+      <strong>Logical Flow and System Overview</strong>
+
+      Here’s a simplified version of the system logic:
+
+      1. The user presses a button or keypad key.
+      2. The microcontroller reads the input via interrupt-based logic.
+      3. It updates the OLED display with the pressed key.
+      4. Simultaneously, the system generates the corresponding DTMF tone digitally.
+      5. The digital signal is filtered into a clean sine wave.
+      6. The tone is transmitted to the GSM terminal through the audio jack.
+      7. Incoming tones (from the GSM call) are decoded via a FFT (Fast Fourier Transform) and displayed on the second OLED.
+    </pre>
+    <div class="chapter-title">📸 Schematic Gallery 📸</div>
+        <h2>Visual Overview of the Project</h2>
+        <p>Here is a series of schematic diagrams that illustrate various parts of the project. These range from component layouts to full signal processing blocks:</p>
+        <div class="gallery">
+          <div class="row">
+            <div class="col-6">
+              <figure>
+                <img src="IMG-20250518-WA0071.jpg" alt="Top Layer Schematic Description of the System">
+                <figcaption><i>Fig.1. Top Layer Schematic Description of the System</i></figcaption>
+              </figure>
+            </div>
+            <div class="col-6">
+              <figure>
+                <img src="IMG-20250518-WA0073.jpg" alt="STM32 Hierarchical Block">
+                <figcaption><i>Fig.2. STM32 Hierarchical Block</i></figcaption>
+              </figure>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-6">
+              <figure>
+                <img src="IMG-20250518-WA0074.jpg" alt="Filtering Hierarchical Block">
+                <figcaption><i>Fig.3. Filtering Hierarchical Block</i></figcaption>
+              </figure>
+            </div>
+            <div class="col-6">
+              <figure>
+                <img src="IMG-20250518-WA0072.jpg" alt="Keypad Hierarchical Block">
+                <figcaption><i>Fig.4. Keypad Hierarchical Block</i></figcaption>
+              </figure>
+            </div>
+          </div>
+        </div>
+        <div class="chapter-title">📸 Development Stages 📸</div>
+        <h2>Real Life Overview</h2>
+        <p>This section features photos from the actual soldering process, offering a behind-the-scenes look at the physical assembly of the project.</p>
+        <div class="gallery">
+          <div class="row">
+            <div class="col-6">
+              <figure>
+                <img src="IMG-20250529-WA0042.jpg" alt="Soldering the Filter Banks">
+                <figcaption><i>Fig.5. Soldering the Filter Banks</i></figcaption>
+              </figure>
+            </div>
+            <div class="col-6">
+              <figure>
+                <img src="IMG-20250529-WA0038.jpg" alt="Soldering the Filter Banks">
+                <figcaption><i>Fig.6. Soldering the Filter Banks</i></figcaption>
+              </figure>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-6">
+              <figure>
+                <img src="IMG-20250529-WA0043.jpg" alt="Final Look of the Filter Banks">
+                <figcaption><i>Fig.7. Final Look of the Filter Banks</i></figcaption>
+              </figure>
+            </div>
+            <div class="col-6">
+              <figure>
+                <img src="WhatsApp Image 2025-05-30 at 09.53.52_bcb24c6e.jpg" alt="Preparing to Solder the Connection Wires">
+                <figcaption><i>Fig.8. Preparing to Solder the Connection Wires</i></figcaption>
+              </figure>
+            </div>
+          </div>
+        </div>
+  </section>
+  <div class="chapter-title">🌷 Chapter III - Software Description 🌷</div>
+    <section>
+      <pre style="white-space: pre-wrap; font-family: inherit; background: #fff0f5; padding: 1rem; border-radius: 12px; border: 1px solid #f5d1e0;">
+        To decode <strong>Dual-Tone Multi-Frequency (DTMF)</strong> symbols, the program deployed on the STM32 microcontroller makes use of functions from the <strong>CMSIS-DSP (Cortex Microcontroller Software Interface Standard - Digital Signal Processing)</strong> library. This library is widely recognized as the industry standard for digital signal processing in embedded systems. It provides a comprehensive set of DSP functions that are highly optimized for ARM Cortex-M cores, such as those used in the STM32 family of microcontrollers. CMSIS-DSP is frequently the first choice among embedded systems engineers when implementing <strong>spectral analysis, filtering, and vector arithmetic</strong> due to its <strong>performance</strong> and <strong>portability</strong>.
+
+        In practice, integrating a full-featured DSP library into a resource-constrained microcontroller environment often involves trade-offs, particularly with regard to memory usage. Our STM32 microcontroller has <strong>limited flash memory and RAM</strong>, a common limitation in many embedded platforms. In such scenarios, off-the-shelf DSP libraries, while powerful, may include more functionality than is actually needed by a given project. This surplus of unused features can consume <strong>critical</strong> system resources unnecessarily.
+
+        In our case, the CMSIS-DSP library includes precompiled tables of twiddle factors for FFT operations across a wide range of sizes-from <strong>16-point to 4096-point</strong> FFTs. These twiddle factors, which are essentially precalculated trigonometric coefficients, are essential for the computation of FFTs, allowing the algorithm to achieve its characteristic speed advantage. However, our application only requires <strong>FFTs of a fixed length</strong>: specifically, 64 points, corresponding to the <strong>size of the input window for DTMF signal segments</strong>. Recognizing this, we took the engineering decision to modify the CMSIS-DSP source code to <strong>remove all twiddle factor definitions for FFT sizes other than 64</strong>.
+
+        This type of modification is not uncommon in the embedded systems domain. It’s a well-known strategy used by engineers working on systems with tightly constrained memory footprints-such as IoT devices or battery-powered wireless sensors. By customizing the library in this way, we achieved a <strong>significant reduction in flash memory consumption</strong>, without sacrificing any of the required computational capability. After these adjustments, the DSP library could be successfully compiled and integrated into our STM32 development environment.
+
+        It’s worth noting that the standard approach for decoding DTMF signals in many embedded systems is the <strong>Goertzel algorithm</strong>. This algorithm is particularly well-suited for <strong>detecting a small number of predetermined frequencies</strong>, such as the 8 distinct tones used in DTMF signaling. Goertzel is attractive due to its <strong>low computational and memory demands</strong>; many engineers choose it for exactly these reasons when working on 8-bit microcontrollers or legacy systems.
+
+        However, in our implementation, we deliberately chose to utilize the <strong>Fast Fourier Transform (FFT)</strong> instead of Goertzel. While FFT is more computationally intensive, it also <strong>provides broader insight into the frequency content of the signal</strong>, and its output can be leveraged for additional diagnostic or monitoring tasks beyond DTMF decoding. This makes FFT a more <strong>versatile tool</strong>, particularly for systems that might later be extended to support multi-tone analysis, noise detection, or adaptive filtering. FFT also enables us to consider future use cases involving <strong>spectral profiling or signal logging</strong>, without requiring major architectural changes.
+
+        One of the <strong>major concerns</strong> when implementing real-time DSP on microcontrollers is managing CPU load and ensuring that processing overhead does not interfere with other time-critical operations. To address this, our software design is centered around <strong>efficient CPU usage and extensive use of hardware peripherals</strong>. The STM32 architecture provides a rich set of <strong>internal peripherals-timers, DMA controllers, ADCs,</strong>that can be harnessed to offload tasks from the main processor. We took advantage of this capability by structuring our firmware to rely on <strong>interrupt service routines (ISRs)</strong> to trigger computations.
+
+        This design method is in line with best practices in embedded systems engineering. By deferring processing tasks to ISRs, the <strong>CPU remains idle when no action is required</strong>, reducing power consumption and improving responsiveness. Engineers frequently use this technique in applications such as motor control, audio processing, and sensor fusion, where predictable response time is <strong>more important</strong> than raw throughput.
+
+        Another key optimization in our system relates to the <strong>generation of DTMF tones</strong>. In many implementations, tone generation is handled in software, with the processor actively calculating and outputting the waveform sample-by-sample. This approach, while flexible, places a significant burden on the CPU and can interfere with concurrent real-time tasks. In contrast, our system delegates the entire task of signal synthesis to two of the STM32’s hardware timers <strong>Timer3 and Timer4</strong>. These timers are configured to <strong>generate periodic waveforms</strong> corresponding to the required DTMF frequencies, eliminating the need for any runtime DSP computation on the processor itself.
+
+        This type of peripheral-driven waveform generation is an achievement of <strong>efficient embedded design</strong>. Engineers commonly employ similar methods when generating <strong>PWM signals, sine wave outputs for audio, or reference clocks for communication protocols</strong>. The key advantage is that once configured, these <strong>peripherals operate autonomously</strong>, allowing the <strong>CPU</strong> to focus exclusively on <strong>supervisory tasks, user input handling, or communication protocols</strong>.
+
+        In summary, our software implementation achieves a balanced and efficient architecture by combining the proven robustness of CMSIS-DSP with <strong>tailored memory optimizations, peripheral-driven processing, and FFT-based spectral analysis.</strong> While the <strong>Goertzel algorithm</strong> would have sufficed for basic DTMF decoding, our choice of <strong>FFT</strong> positions the system for <strong>future expansion</strong> and <strong>dynamic signal analysis</strong>. These decisions reflect common design patterns in the embedded engineering community: <strong>reduce memory where possible, leverage hardware to minimize CPU load, and design with future extensibility in mind</strong>.
+      </pre>
+    </section>
+
+  <div class="chapter-title">🌸 Bill of Materials 🌸</div>
+    <section>
+        <table class="bom-table">
+        <thead>
+            <tr>
+              <th>Item No.</th>
+              <th>Quantity</th>
+              <th>Reference</th>
+              <th>Value</th>
+              <th>Package</th>
+              <th>Note</th>
+              <th>Supplier/Product Code</th>
+              <th>Unit Price (RON)</th>
+            </tr>
+        </thead>
+        <tbody style="text-align: center;">
+            <tr>
+                <td>1</td>
+                <td>6</td>
+                <td>C5C,C5B,C5A,C5C1,C5B1,C5A1</td>
+                <td>100n</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>2</td>
+                <td>1</td>
+                <td>C6A</td>
+                <td>68n</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>3</td>
+                <td>1</td>
+                <td>C6A1</td>
+                <td>56n</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>4</td>
+                <td>1</td>
+                <td>C6B</td>
+                <td>18n</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>5</td>
+                <td>1</td>
+                <td>C6B1</td>
+                <td>10n</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>6</td>
+                <td>1</td>
+                <td>C6C</td>
+                <td>1.5n</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>7</td>
+                <td>1</td>
+                <td>C6C1</td>
+                <td>820p</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>8</td>
+                <td>1</td>
+                <td>R1A</td>
+                <td>1.8k</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>9</td>
+                <td>1</td>
+                <td>R1B</td>
+                <td>2.7k</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>10</td>
+                <td>4</td>
+                <td>R1,R2,R5,R2C1</td>
+                <td>1k</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>11</td>
+                <td>1</td>
+                <td>R1C</td>
+                <td>6.8k</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>12</td>
+                <td>2</td>
+                <td>R2A,R2A1</td>
+                <td>3.9k</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>13</td><td>1</td><td>R2B</td><td>5.6k</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>14</td><td>1</td><td>R2C</td><td>15k</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>15</td><td>3</td><td>R3,R4,R2B2</td><td>10k</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>16</td><td>1</td><td>R1A1</td><td>1.6k</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>17</td><td>1</td><td>R1B1</td><td>2.2k</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>18</td><td>1</td><td>R2B1</td><td>3.3k</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>19</td><td>1</td><td>R1C1</td><td>6.2k</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>20</td><td>2</td><td>U1,U2</td><td>LM324</td><td>DIP14</td><td>Operational Amplifiers</td><td>ICPE</td><td></td>
+            </tr>
+
+            <tr>
+                <td>21</td><td>1</td><td>C1</td><td>2.2n</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>22</td><td>2</td><td>Q1</td><td>2N2222</td><td>TO92</td><td>NPN Transistors</td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>23</td><td>2</td><td>R1,R2</td><td>20k</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>24</td><td>1</td><td>R4</td><td>91k</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>25</td><td>17</td><td>SW1-SW16</td><td></td><td></td><td>KEYPAD Keys</td><td>ICPE</td><td></td>
+            </tr>
+
+            <tr>
+                <td>26</td><td>2</td><td>U1,U2</td><td>CD4051B</td><td>DIP14</td><td>Multiplexers</td><td>ICPE</td><td></td>
+            </tr>
+
+            <tr>
+                <td>27</td><td>1</td><td>U3</td><td>CD4060B</td><td>DIP16</td><td>Counter</td><td>ICPE</td><td></td>
+            </tr>
+
+            <tr>
+                <td>28</td><td>6</td><td>C1,C3,C4,C5,C6,C15</td><td>100n</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>29</td><td>2</td><td>C2,C12</td><td>10u</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>30</td><td>2</td><td>C8,C9</td><td>20p</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>31</td><td>1</td><td>C13</td><td>22u</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>32</td><td>4</td><td>D1,D2,D3,D4</td><td>LED</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>33</td><td>4</td><td>R1,R2,R3,R11</td><td>220</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>34</td><td>2</td><td>R4,R12</td><td>100k</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>35</td><td>1</td><td>R6</td><td>1M</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>36</td><td>2</td><td>R8,R9</td><td>20</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>37</td><td>1</td><td>R10</td><td>10</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>38</td><td>1</td><td>SW1</td><td></td><td></td><td>BOOT Switch</td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>39</td><td>1</td><td>SW2</td><td></td><td></td><td>RESET Switch</td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>40</td><td>1</td><td>SW3</td><td></td><td></td><td>USER Switch</td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>41</td><td>2</td><td>SW4, SW5</td><td></td><td></td><td>BOOT MODE SELECTORS</td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>42</td><td>1</td><td>U1</td><td>STM32F103C8T6</td><td></td><td>Microcontroller</td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>43</td><td>1</td><td>U2</td><td>LM1175-3.3</td><td></td><td>Regulator</td><td>ICPE</td><td></td>
+            </tr>
+
+            <tr>
+                <td>44</td><td>1</td><td>Y1</td><td>XTAL-8M</td><td></td><td>Quartz Oscillator</td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>45</td><td>2</td><td>C1,C2</td><td>100n</td><td></td><td></td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>46</td>
+                <td>2</td>
+                <td>D1,D2</td>
+                <td>SSD1306_OLED</td>
+                <td></td>
+                <td>OLED display with I2C address hardcoded by the manufacturer</td>
+                <td><a href="https://ardushop.ro/ro/display-uri-si-led-uri/1842-display-oled-096-i2c-alb-jmd096d-1-6427854027894.html">Ardu Shop</a>/UQYYWE_oled_i2c_white
+                <td>20.99</td>
+            </tr>
+
+            <tr>
+                <td>47</td><td>1</td><td>J1</td><td>CH340G_CONN</td><td></td><td>USB-UART Connector</td><td>ICPE</td><td></td>
+            </tr>
+
+            <tr>
+                <td>48</td><td>1</td><td>J2</td><td>USB_C_CONN</td><td></td><td>USB-C Connector</td><td>UPB</td><td></td>
+            </tr>
+
+            <tr>
+                <td>49</td><td>1</td><td>J3</td><td>DTMF_IN_CONN</td><td></td><td>TRS 3.5mm Audio Jack IN Connector</td><td>ICPE</td><td></td>
+            </tr> 
+
+            <tr>
+                <td>50</td><td>1</td><td>J4</td><td>DTMF_OUT_CONN</td><td></td><td>TRS 3.5mm Audio Jack OUT Connector</td><td>ICPE</td><td></td>
+            </tr>
+
+            <tr>
+                <td>51</td>
+                <td>3</td>
+                <td>R1,R2,R3</td>
+                <td>20k</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td>52</td>
+                <td>1</td>
+                <td>R4</td>
+                <td>300</td>
+                <td></td>
+                <td></td>
+                <td>UPB</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>53</td>
+                <td>1</td>
+                <td></td>
+                <td>3.5mm Microphone and Headset Audio Jack Splitter</td>
+                <td></td>
+                <td></td>
+                <td>ICPE</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>54</td>
+                <td>2</td>
+                <td></td>
+                <td>3.5mm Audio Jack Male-to-Male Cable</td>
+                <td></td>
+                <td></td>
+                <td>ICPE</td>
+                <td></td>
+            </tr>
+        </tbody>
+        </table>
+    </section>
+
+  <div class="chapter-title">🌸 Chapter IV - Results and Conclusions 🌸</div>
+    <section>
+      <pre style="white-space: pre-wrap; font-family: inherit; background: #fff0f5; padding: 1rem; border-radius: 12px; border: 1px solid #f5d1e0;">
+        The primary outcome we are most satisfied with is the system's capability to decode up to 50 DTMF symbols per second with both accuracy and reliability. Achieving this level of performance within the constraints of a resource-limited embedded platform highlights the efficiency of our software-hardware integration and the thoughtful optimizations we introduced throughout the design.
+
+        This result reflects a high throughput for a microcontroller-based DTMF decoder, especially considering the real-time constraints and limited clock cycles available on typical STM32 platforms. Many engineers in similar scenarios struggle to strike the right balance between speed and precision. Often, higher symbol rates come at the cost of robustness-particularly in noisy environments or under timing jitter. Our approach, which relies on FFT-based spectral analysis and interrupt-driven execution, has proven resilient even under rapid successive tone inputs.
+
+        From a system architecture perspective, this implementation is both scalable and extensible, designed not only to fulfill the current specifications but also to accommodate a wide range of future enhancements. Several paths for further development have been identified, some of which are commonly explored by practitioners in the embedded domain:
+        <ul>
+          <li><strong> SPI-based displays:</strong> Currently, screen output or any visual representation of decoded data is limited by the bandwidth of slower interfaces such as I²C or parallel GPIO. Transitioning to SPI-enabled displays could enable higher refresh rates, especially beneficial in applications with continuous user interaction or real-time feedback. This is a typical enhancement seen in wearable or portable diagnostic tools where latency is critical.</li>
+          <li><strong>Replacing analog filters with DAC and digital synthesis techniques:</strong> In many professional systems, engineers phase out analog filtering and tone generation in favor of digital methods such as Direct Digital Synthesis (DDS). Using a DAC in conjunction with a precomputed waveform table or DDS controller allows for fine-grained control of output signals and simplifies PCB layout by reducing analog complexity. Moreover, such a digital pathway enables easier reconfiguration via firmware updates.</li>
+          <li><strong>Expanding system integration:</strong> By exposing communication channels such as UART, SPI, or USB CDC, the embedded DTMF decoder can be connected to desktop applications, logging systems, or control dashboards. This integration can allow for broader use cases such as remote command reception, telemetry, or even device pairing. In practice, UART remains one of the most commonly used methods for debugging and interfacing, due to its simplicity and widespread support.</li>
+          <li><strong>Dedicated functionality triggered via DTMF commands:</strong> A powerful use case we explored was the on-demand transmission of GPS coordinates using DTMF tones. This approach, which essentially uses the audio path as a low-bandwidth command and control channel, can be found in remote telemetry and asset tracking applications where wireless coverage is sparse or limited to audio communication (e.g., through voice networks). Implementing such functionality within a single embedded system underlines the flexibility of our platform.</li>
+        </ul>
+        Beyond meeting the initial requirements, we approached this project not merely as a task of engineering implementation, but as a sandbox for advanced experimentation in embedded systems design. The work enabled us to engage with digital signal processing, hardware-software co-design, and real-time system optimization in a meaningful way. These are critical domains in modern embedded engineering, and projects like this one serve as valuable stepping stones for understanding complex industrial systems.
+
+        Many embedded engineers face the dilemma of choosing between off-the-shelf solutions and custom development. Our experience confirms that a well-planned, modular design grounded in DSP principles and efficient use of hardware resources can outperform generic solutions, especially when performance, extensibility, and reliability are required.
+
+        In conclusion, this project not only delivered a performant DTMF decoding solution, but also laid the groundwork for future extensions in communication, control, and signal processing domains. It reflects what we believe to be a solid model for embedded development: prioritize clean hardware-software separation, optimize for present constraints, and leave room for tomorrow’s innovations.
+        
+        <div class="gallery">
+          <div class="row">
+            <div class="col-6">
+              <figure>
+                <img src="WhatsApp Image 2025-05-30 at 13.16.48_8584b81a.jpg" alt="Front View without OLEDs">
+                <figcaption><i>Fig.9. Front View without OLEDs</i></figcaption>
+              </figure>
+            </div>
+            <div class="col-6">
+              <figure>
+                <img src="WhatsApp Image 2025-05-30 at 13.52.49_dbece881.jpg" alt="Front View with OLEDs">
+                <figcaption><i>Fig.10. Front View with OLEDs</i></figcaption>
+              </figure>
+            </div>
+          </div>
+        </div>
+      </pre>
+    </section>
+
+  <div class="chapter-title">🌸 Chapter V - Bibliography 🌸</div>
+    <section>
+      <ul>
+            <li><a href="https://en.wikipedia.org/wiki/Goertzel_algorithm">Goertzel Algorithm</a></li>
+            <li><a href="https://arm-software.github.io/CMSIS_5/DSP/html/index.html">CMSIS DSP Software Library</a></li>
+            <li><a href="https://tools.analog.com/en/filterwizard/">Analog Filter Wizard</a></li>
+            <li><a href="https://www.ti.com/lit/ds/symlink/lm324a.pdf?ts=1748367974362&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FLM324A%252Fpart-details%252FLM324AN">Operation Amplifiers Data Sheet</a></li>
+            <li><a href="https://www.ti.com/lit/ds/symlink/cd4051b.pdf?ts=1748426661821&ref_url=https%253A%252F%252Fwww.google.com%252F">Multiplexers Data Sheet</a></li>
+            <li><a href="https://www.ti.com/lit/ds/symlink/cd4060b.pdf?ts=1748502123904&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FCD4060B">Counter Data Sheet</a></li>
+            <li><a href="https://diotec.com/request/datasheet/2n2222a.pdf">Tranzistor Data Sheet</a></li> 
+            <li><a href="https://en.wikipedia.org/wiki/DTMF_signaling">DTMF Signaling Wikipedia</a></li> 
+            <li><a href="https://www.analog.com/media/en/technical-documentation/dsp-book/dsp_book_Ch20.pdf">The Scientist and Engineer's Guide to Digital Signal Processing Chebyshev Filters</a></li>
+            <li>Digital Signal Processing - Prof. Dr. Ing. Cristina-Claudia Oprea - Moodle Course Support</li>                    
+            <li><a href="https://www.w3schools.com/html/html_tables.asp">HTML Tables</a></li>
+            <li><a href="https://www.w3schools.com/html/html_lists.asp">HTML Lists</a></li>
+            <li><a href="https://www.w3schools.com/html/html_css.asp">HTML CSS</a></li>
+            <li><a href="https://www.w3schools.com/css/">CSS</a></li>
+            
+        </ul>
+    </section>
+</body>
+</html>
